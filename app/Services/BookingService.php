@@ -149,8 +149,8 @@ class BookingService
         return Booking::where('student_id', $student->id)
             ->where('class_session_id', $classSessionId)
             ->whereIn('status', [
-                BookingStatus::CONFIRMED,
-                BookingStatus::WAITING,
+                BookingStatus::CONFIRMED->value,
+                BookingStatus::WAITING->value,
             ])
             ->exists();
     }
