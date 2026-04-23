@@ -1,0 +1,99 @@
+# Docker Compose configuration for local development of the Class Booking System.
+# This sets up:
+# - 'app': PHP-FPM + Laravel (uses existing Dockerfile for build).
+# - 'webserver': Nginx for serving the app.
+# - 'db': MySQL database (persistent volume for data).
+# - 'node': Node.js for Vite dev server (React/Inertia HMR).
+#
+# Usage:
+# 1. Copy .env.example to .env and configure DB settings.
+# 2. Run: docker-compose up -d --build
+# 3. Access: http://localhost:8000
+# 4. Run migrations: docker-compose exec app php artisan migrate:fresh --seed
+# 5. Stop: docker-compose down
+
+version: "3.8"
+
+services:
+  # PHP-FPM service for Laravel application
+  app:
+    build:
+      context: . # Build from current directory
+      dockerfile: Dockerfile # Reuse existing Fly.io Dockerfile
+    container_name: class-booking-app
+    restart: unless-stopped
+    working_dir: /var/www/html
+    volumes:
+      - .:/var/www/html # Mount source code for live reload (development)
+      - ./storage:/var/www/html/storage # Persist logs and sessions
+    environment:
+      # Database configuration (match with 'db' service)
+      - DB_CONNECTION=mysql
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_DATABASE=class_booking
+      - DB_USERNAME=root
+      - DB_PASSWORD=password
+      # Optional: Redis for caching/sessions
+      - REDIS_HOST=redis
+    depends_on:
+      - db # Start DB first
+    networks:
+      - laravel
+
+  # Nginx web server to serve PHP and static assets
+  webserver:
+    image: nginx:alpine # Lightweight Nginx image
+    container_name: class-booking-nginx
+    restart: unless-stopped
+    ports:
+      - "8000:80" # Map host port 8000 to container port 80
+    volumes:
+      - .:/var/www/html # Mount app files
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf # Custom Nginx config
+    networks:
+      - laravel
+    depends_on:
+      - app # Depend on PHP-FPM
+
+  # MySQL database service (use SQLite in .env for simpler setup)
+  db:
+    image: mysql:8.0 # MySQL 8.0 for production-like environment
+    container_name: class-booking-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: class_booking # Default database name
+      MYSQL_ROOT_PASSWORD: password # Root password (change for security)
+      MYSQL_USER: root # Default user
+      MYSQL_PASSWORD: password
+    ports:
+      - "3306:3306" # Expose MySQL port for local tools (e.g., TablePlus)
+    volumes:
+      - dbdata:/var/lib/mysql # Persistent volume for database data
+    networks:
+      - laravel
+
+  # Node.js service for Vite development server (React/Inertia)
+  node:
+    image: node:18-alpine # Node 18 for Vite compatibility
+    container_name: class-booking-node
+    working_dir: /app
+    volumes:
+      - .:/app # Mount source code
+      - /app/node_modules # Avoid mounting node_modules (use container's)
+    ports:
+      - "5173:5173" # Vite dev server port (HMR)
+    command: npm run dev # Run Vite in development mode
+    networks:
+      - laravel
+    depends_on:
+      - app
+
+# Named volumes for data persistence
+volumes:
+  dbdata: # MySQL data volume
+
+# Custom network for service communication
+networks:
+  laravel:
+    driver: bridge # Isolated network for internal traffic
