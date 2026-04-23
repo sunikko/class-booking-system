@@ -18,7 +18,7 @@ class BookingService
     {
         $classSessions = ClassSession::withCount([
             'bookings as booked_count' => function ($q) {
-                $q->where('status', BookingStatus::CONFIRMED);
+                $q->where('status', BookingStatus::CONFIRMED->value);
             }
         ])->get();
 
