@@ -18,7 +18,7 @@ class BookingService
     {
         $classSessions = ClassSession::withCount([
             'bookings as booked_count' => function ($q) {
-                $q->where('status', 'confirmed');
+                $q->where('status', BookingStatus::CONFIRMED);
             }
         ])->get();
 
@@ -65,6 +65,10 @@ class BookingService
         DB::transaction(function () use ($user, $classSessionId, $date) {
             $student = $user->student;
 
+            if (!$student) {
+                throw new DomainException('STUDENT_NOT_FOUND');
+            }
+
             // Pre-condition check: Ensure the student doesn't have an active booking already.
             // This is a critical business rule enforced before proceeding.
             if ($this->hasActiveBookingForSession($student, $classSessionId)) {
@@ -94,11 +98,13 @@ class BookingService
                 ? BookingStatus::CONFIRMED
                 : BookingStatus::WAITING;
 
+             \Log::info('Creating booking', ['status' => $status, 'date' => $date]);
+
             // Create the booking record. This is the final write operation within the transaction.
             Booking::create([
                 'student_id' => $student->id,
                 'class_session_id' => $classSessionId,
-                'booking_date' => $date, // Use the provided booking date
+                'booking_date' => Carbon::parse($date),
                 'status' => $status,
             ]);
         });
