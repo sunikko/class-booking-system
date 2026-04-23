@@ -25,6 +25,7 @@ class BookingService
         $sessionData = ClassSessionData::fromCollection($classSessions);
 
         $student = $user ? $user->student : null;
+        // Eager load the 'classSession' relationship for each booking
         $bookings = $student ? $student->bookings()->with('classSession')->get() : collect();
 
         return [
@@ -175,16 +176,22 @@ class BookingService
         Carbon $newStart,
         Carbon $newEnd
     ): bool {
-        $bookings = Booking::with('classSession')
+        $bookings = Booking::with('classSession') // Ensure classSession is loaded
             ->where('student_id', $student->id)
             ->where('booking_date', $newStart->toDateString()) // Optimization: Only fetch bookings for the specific date
             ->whereIn('status', [
-                BookingStatus::CONFIRMED,
-                BookingStatus::WAITING,
+                BookingStatus::CONFIRMED->value, // Use value for comparison
+                BookingStatus::WAITING->value,   // Use value for comparison
             ])
             ->get();
 
         foreach ($bookings as $booking) {
+            // Check if classSession relationship is loaded and not null
+            if (!$booking->classSession) {
+                // Log an error or handle this case if it's possible for bookings to not have a class session
+                continue;
+            }
+
             $session = $booking->classSession;
 
             $existingStart = $session->startDateTime();
