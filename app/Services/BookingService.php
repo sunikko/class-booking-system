@@ -105,7 +105,7 @@ class BookingService
                 'student_id' => $student->id,
                 'class_session_id' => $classSessionId,
                 'booking_date' => Carbon::parse($date),
-                'status' => $status,
+                'status' => $status->value,
             ]);
         });
     }
@@ -129,7 +129,7 @@ class BookingService
             'student_id' => $student->id,
             'class_session_id' => $classSessionIds[0],
             'booking_date' => $date,
-            'status' => BookingStatus::CONFIRMED,
+            'status' => BookingStatus::CONFIRMED->value,
         ]);
     }
 
