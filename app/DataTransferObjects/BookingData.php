@@ -69,7 +69,6 @@ class BookingData
     // For now, let's assume fromModel constructs the DTO properties, and Laravel handles
     // converting the DTO object into an array response (though explicit toArray is safer).
     // If Laravel doesn't automatically convert your DTO object to array, you might need this:
-    /*
     public function toArray(): array
     {
         return [
@@ -82,5 +81,4 @@ class BookingData
             'class_session' => $this->classSession->toArray(), // Ensure ClassSessionData has toArray() or is directly convertible
         ];
     }
-    */
 }

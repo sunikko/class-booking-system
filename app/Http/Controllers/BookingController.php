@@ -22,7 +22,8 @@ class BookingController extends Controller
         $data = $bookingService->getIndexData($request->user());
 
         if ($request->wantsJson() || $request->is('api/*')) {
-            // Ensure BookingData and ClassSessionData are converted to arrays
+            // Explicitly convert BookingData and ClassSessionData to arrays for JSON response
+            // This assumes BookingData and ClassSessionData have a toArray() method or are Eloquent Models
             $data['bookings'] = collect($data['bookings'])->map(fn($booking) => $booking->toArray())->toArray();
             $data['sessions'] = collect($data['sessions'])->map(fn($session) => $session->toArray())->toArray();
             return response()->json($data);

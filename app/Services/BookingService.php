@@ -26,11 +26,13 @@ class BookingService
 
         $student = $user ? $user->student : null;
         // Eager load the 'classSession' relationship for each booking
+        // Ensure BookingData::fromModel is used when processing bookings for the DTO
         $bookings = $student ? $student->bookings()->with('classSession')->get() : collect();
+        $bookingData = $bookings->map(fn($booking) => BookingData::fromModel($booking));
 
         return [
             'sessions' => $sessionData,
-            'bookings' => $bookings
+            'bookings' => $bookingData, // Return DTOs
         ];
     }
 
