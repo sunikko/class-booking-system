@@ -7,8 +7,9 @@ use App\Enums\BookingStatus;
 
 use App\Models\Booking;
 use Carbon\Carbon;
+use JsonSerializable;
 
-class BookingData
+class BookingData implements JsonSerializable
 {
     public function __construct(
         public int $id,
@@ -80,5 +81,10 @@ class BookingData
             'created_at' => $this->created_at,
             'class_session' => $this->classSession->toArray(), // Ensure ClassSessionData has toArray() or is directly convertible
         ];
+    }
+
+    public function jsonSerialize(): array
+    {
+        return $this->toArray();
     }
 }
