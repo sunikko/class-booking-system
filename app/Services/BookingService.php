@@ -7,6 +7,7 @@ use App\Models\Booking;
 use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\User;
+use App\DataTransferObjects\BookingData;
 use App\DataTransferObjects\ClassSessionData;
 use App\Enums\BookingStatus;
 use DomainException;
@@ -60,13 +61,15 @@ class BookingService
      *
      * @return void
      */
-    public function createBooking(User $user, int $classSessionId, string $date): void
+    public function createBooking(array $data): void
     {
         // Wrap the entire operation in a database transaction.
         // This ensures that if any part fails, the entire operation is rolled back,
         // maintaining data integrity.
-        DB::transaction(function () use ($user, $classSessionId, $date) {
-            $student = $user->student;
+        DB::transaction(function () use ($data) {
+            $student = auth()->user()->student ?? null;
+            $classSessionId = $data['class_session_id'];
+            $date = $data['date'];
 
             if (!$student) {
                 throw new DomainException('STUDENT_NOT_FOUND');
@@ -101,7 +104,7 @@ class BookingService
                 ? BookingStatus::CONFIRMED
                 : BookingStatus::WAITING;
 
-             \Log::info('Creating booking', ['status' => $status, 'date' => $date]);
+            \Log::info('Creating booking', ['status' => $status, 'date' => $date]);
 
             // Create the booking record. This is the final write operation within the transaction.
             Booking::create([

@@ -38,9 +38,10 @@ class BookingController extends Controller
     {
         try {
             $bookingService->createBooking(
-                $request->user(),
-                $request->validated('class_session_id'),
-                $request->validated('booking_date')
+                [
+                    'class_session_id' => $request->validated('class_session_id'),
+                    'date' => $request->validated('booking_date'),
+                ]
             );
 
             return response()->json([
