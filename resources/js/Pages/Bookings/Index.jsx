@@ -273,7 +273,7 @@ export default function Index({ auth, sessions = [], bookings = [] }) {
                             ) : (
                                 bookings.map(b => (
                                     <div key={b.id} className="flex justify-between items-center p-3 bg-gray-50 rounded border">
-                                        <span className="text-sm">{b.class_session?.class_subject || ''} - {b.class_session?.class_name} {b.class_session?.start_time} ({new Date(b.booking_date).toLocaleDateString()})</span>
+                                        <span className="text-sm">{b.classSession?.class_subject || ''} - {b.classSession?.class_name} {b.classSession?.start_time} ({new Date(b.booking_date).toLocaleDateString()})</span>
                                         <div className="flex items-center gap-2">
                                             <span className="text-xs bg-green-100 text-green-700 px-2 py-1 font-semibold rounded uppercase">{b.status}</span>
                                             {/* Show cancel button only if status is confirmed or waiting */}

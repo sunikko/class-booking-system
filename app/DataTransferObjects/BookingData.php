@@ -33,7 +33,7 @@ class BookingData
             booking_date: $booking->booking_date->format('Y-m-d'), // Format booking date for display
             status: self::getStatusDisplayName($booking->status), // Get human-readable status
             created_at: $booking->created_at ? $booking->created_at->format('Y-m-d H:i:s') : null,
-            classSession: ClassSessionData::fromModel($booking->classSession), // Use the ClassSessionData DTO
+            classSession: $booking->classSession ? ClassSessionData::fromModel($booking->classSession) : null,
         );
     }
 

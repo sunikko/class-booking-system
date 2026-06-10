@@ -28,6 +28,7 @@ class BookingController extends Controller
             $data['sessions'] = collect($data['sessions'])->map(fn($session) => $session->toArray())->toArray();
             return response()->json($data);
         }
+        // dd($data);
         return Inertia::render('Bookings/Index', $data);
     }
 
