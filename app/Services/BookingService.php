@@ -59,15 +59,15 @@ class BookingService
      * @throws \DomainException If an active booking already exists for the student,
      *                          or if there's a time conflict, or if the session is invalid.
      *
-     * @return void
+     * @return Booking
      */
-    public function createBooking(array $data): void
+    public function createBooking(User $user, array $data): Booking
     {
         // Wrap the entire operation in a database transaction.
         // This ensures that if any part fails, the entire operation is rolled back,
         // maintaining data integrity.
-        DB::transaction(function () use ($data) {
-            $student = auth()->user()->student ?? null;
+        return DB::transaction(function () use ($user, $data) {
+            $student = $user->student;
             $classSessionId = $data['class_session_id'];
             $date = $data['date'];
 
@@ -107,36 +107,13 @@ class BookingService
             \Log::info('Creating booking', ['status' => $status, 'date' => $date]);
 
             // Create the booking record. This is the final write operation within the transaction.
-            Booking::create([
+            return Booking::create([
                 'student_id' => $student->id,
                 'class_session_id' => $classSessionId,
                 'booking_date' => Carbon::parse($date),
                 'status' => $status->value,
             ]);
         });
-    }
-
-    /**
-     * Submits a booking for a student for given class sessions on a specific date.
-     *
-     * @param Student $student The student making the booking.
-     * @param array $classSessionIds Array of class session IDs to book.
-     * @param string $date The date of the booking.
-     * @param string|null $comment Optional comment for the booking.
-     * @return Booking The created booking instance.
-     */
-    public function submitBooking(
-        Student $student,
-        array $classSessionIds,
-        string $date,
-        ?string $comment
-    ): Booking {
-        return Booking::create([
-            'student_id' => $student->id,
-            'class_session_id' => $classSessionIds[0],
-            'booking_date' => $date,
-            'status' => BookingStatus::CONFIRMED->value,
-        ]);
     }
 
 
