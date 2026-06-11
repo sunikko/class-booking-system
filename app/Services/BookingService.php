@@ -7,6 +7,7 @@ use App\Models\Booking;
 use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\User;
+use App\DataTransferObjects\BookingData;
 use App\DataTransferObjects\ClassSessionData;
 use App\Enums\BookingStatus;
 use DomainException;
@@ -18,18 +19,21 @@ class BookingService
     {
         $classSessions = ClassSession::withCount([
             'bookings as booked_count' => function ($q) {
-                $q->where('status', 'confirmed');
+                $q->where('status', BookingStatus::CONFIRMED->value);
             }
         ])->get();
 
         $sessionData = ClassSessionData::fromCollection($classSessions);
 
         $student = $user ? $user->student : null;
+        // Eager load the 'classSession' relationship for each booking
+        // Ensure BookingData::fromModel is used when processing bookings for the DTO
         $bookings = $student ? $student->bookings()->with('classSession')->get() : collect();
+        $bookingData = $bookings->map(fn($booking) => BookingData::fromModel($booking));
 
         return [
             'sessions' => $sessionData,
-            'bookings' => $bookings
+            'bookings' => $bookingData, // Return DTOs
         ];
     }
 
@@ -55,15 +59,21 @@ class BookingService
      * @throws \DomainException If an active booking already exists for the student,
      *                          or if there's a time conflict, or if the session is invalid.
      *
-     * @return void
+     * @return Booking
      */
-    public function createBooking(User $user, int $classSessionId, string $date): void
+    public function createBooking(User $user, array $data): Booking
     {
         // Wrap the entire operation in a database transaction.
         // This ensures that if any part fails, the entire operation is rolled back,
         // maintaining data integrity.
-        DB::transaction(function () use ($user, $classSessionId, $date) {
+        return DB::transaction(function () use ($user, $data) {
             $student = $user->student;
+            $classSessionId = $data['class_session_id'];
+            $date = $data['date'];
+
+            if (!$student) {
+                throw new DomainException('STUDENT_NOT_FOUND');
+            }
 
             // Pre-condition check: Ensure the student doesn't have an active booking already.
             // This is a critical business rule enforced before proceeding.
@@ -94,37 +104,16 @@ class BookingService
                 ? BookingStatus::CONFIRMED
                 : BookingStatus::WAITING;
 
+            \Log::info('Creating booking', ['status' => $status, 'date' => $date]);
+
             // Create the booking record. This is the final write operation within the transaction.
-            Booking::create([
+            return Booking::create([
                 'student_id' => $student->id,
                 'class_session_id' => $classSessionId,
-                'booking_date' => $date, // Use the provided booking date
-                'status' => $status,
+                'booking_date' => Carbon::parse($date),
+                'status' => $status->value,
             ]);
         });
-    }
-
-    /**
-     * Submits a booking for a student for given class sessions on a specific date.
-     *
-     * @param Student $student The student making the booking.
-     * @param array $classSessionIds Array of class session IDs to book.
-     * @param string $date The date of the booking.
-     * @param string|null $comment Optional comment for the booking.
-     * @return Booking The created booking instance.
-     */
-    public function submitBooking(
-        Student $student,
-        array $classSessionIds,
-        string $date,
-        ?string $comment
-    ): Booking {
-        return Booking::create([
-            'student_id' => $student->id,
-            'class_session_id' => $classSessionIds[0],
-            'booking_date' => $date,
-            'status' => BookingStatus::CONFIRMED,
-        ]);
     }
 
 
@@ -143,8 +132,8 @@ class BookingService
         return Booking::where('student_id', $student->id)
             ->where('class_session_id', $classSessionId)
             ->whereIn('status', [
-                BookingStatus::CONFIRMED,
-                BookingStatus::WAITING,
+                BookingStatus::CONFIRMED->value,
+                BookingStatus::WAITING->value,
             ])
             ->exists();
     }
@@ -169,16 +158,22 @@ class BookingService
         Carbon $newStart,
         Carbon $newEnd
     ): bool {
-        $bookings = Booking::with('classSession')
+        $bookings = Booking::with('classSession') // Ensure classSession is loaded
             ->where('student_id', $student->id)
             ->where('booking_date', $newStart->toDateString()) // Optimization: Only fetch bookings for the specific date
             ->whereIn('status', [
-                BookingStatus::CONFIRMED,
-                BookingStatus::WAITING,
+                BookingStatus::CONFIRMED->value, // Use value for comparison
+                BookingStatus::WAITING->value,   // Use value for comparison
             ])
             ->get();
 
         foreach ($bookings as $booking) {
+            // Check if classSession relationship is loaded and not null
+            if (!$booking->classSession) {
+                // Log an error or handle this case if it's possible for bookings to not have a class session
+                continue;
+            }
+
             $session = $booking->classSession;
 
             $existingStart = $session->startDateTime();

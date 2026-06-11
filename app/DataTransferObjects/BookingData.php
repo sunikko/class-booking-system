@@ -7,8 +7,9 @@ use App\Enums\BookingStatus;
 
 use App\Models\Booking;
 use Carbon\Carbon;
+use JsonSerializable;
 
-class BookingData
+class BookingData implements JsonSerializable
 {
     public function __construct(
         public int $id,
@@ -33,7 +34,7 @@ class BookingData
             booking_date: $booking->booking_date->format('Y-m-d'), // Format booking date for display
             status: self::getStatusDisplayName($booking->status), // Get human-readable status
             created_at: $booking->created_at ? $booking->created_at->format('Y-m-d H:i:s') : null,
-            classSession: ClassSessionData::fromModel($booking->classSession), // Use the ClassSessionData DTO
+            classSession: $booking->classSession ? ClassSessionData::fromModel($booking->classSession) : null,
         );
     }
 
@@ -69,7 +70,6 @@ class BookingData
     // For now, let's assume fromModel constructs the DTO properties, and Laravel handles
     // converting the DTO object into an array response (though explicit toArray is safer).
     // If Laravel doesn't automatically convert your DTO object to array, you might need this:
-    /*
     public function toArray(): array
     {
         return [
@@ -82,5 +82,9 @@ class BookingData
             'class_session' => $this->classSession->toArray(), // Ensure ClassSessionData has toArray() or is directly convertible
         ];
     }
-    */
+
+    public function jsonSerialize(): array
+    {
+        return $this->toArray();
+    }
 }

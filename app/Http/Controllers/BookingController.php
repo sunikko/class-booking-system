@@ -22,8 +22,13 @@ class BookingController extends Controller
         $data = $bookingService->getIndexData($request->user());
 
         if ($request->wantsJson() || $request->is('api/*')) {
+            // Explicitly convert BookingData and ClassSessionData to arrays for JSON response
+            // This assumes BookingData and ClassSessionData have a toArray() method or are Eloquent Models
+            $data['bookings'] = collect($data['bookings'])->map(fn($booking) => $booking->toArray())->toArray();
+            $data['sessions'] = collect($data['sessions'])->map(fn($session) => $session->toArray())->toArray();
             return response()->json($data);
         }
+        // dd($data);
         return Inertia::render('Bookings/Index', $data);
     }
 
@@ -34,9 +39,11 @@ class BookingController extends Controller
     {
         try {
             $bookingService->createBooking(
-                $request->user(),
-                $request->validated('class_session_id'),
-                $request->validated('booking_date')
+                user: $request->user(),
+                data: [
+                    'class_session_id' => $request->validated('class_session_id'),
+                    'date' => $request->validated('booking_date'),
+                ]
             );
 
             return response()->json([

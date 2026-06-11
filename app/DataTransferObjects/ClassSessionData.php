@@ -36,7 +36,7 @@ class ClassSessionData
             start_time: $classSession->start_time, // Keep as string, format if needed for API
             duration_min: $classSession->duration_min,
             max_students: $classSession->max_students,
-            booked_count: $classSession->booked_count, // Access the calculated property
+            booked_count: (int) ($classSession->booked_count ?? 0), // Access the calculated property
         );
     }
 
@@ -69,10 +69,8 @@ class ClassSessionData
     {
         // Ensure the collection being passed has the 'booked_count' property appended.
         // If not, the fromModel and toArray methods will need adjustments.
-        return array_map(function ($model) {
-            // We need to ensure that when $model is passed to fromModel,
-            // it has the booked_count property. The current query in web.php already does this.
-            return self::fromModel($model);
-        }, iterator_to_array($collection));
+        return collect($collection)->map(function ($model) {
+            return self::fromModel($model)->toArray();
+        })->all();
     }
 }

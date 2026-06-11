@@ -1,128 +1,49 @@
-# syntax = docker/dockerfile:experimental
+FROM php:8.4-fpm AS base
 
-ARG PHP_VERSION=8.4
-ARG NODE_VERSION=18
-FROM ubuntu:22.04 as base
-LABEL fly_launch_runtime="laravel"
+# 1. 필수 시스템 도구 설치 (git, unzip 등)
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    libpng-dev \
+    libonig-dev \
+    libxml2-dev \
+    zip \
+    unzip \
+    sqlite3 \
+    libsqlite3-dev \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# PHP_VERSION needs to be repeated here
-# See https://docs.docker.com/engine/reference/builder/#understand-how-arg-and-from-interact
-ARG PHP_VERSION
-ENV DEBIAN_FRONTEND=noninteractive \
-    COMPOSER_ALLOW_SUPERUSER=1 \
-    COMPOSER_HOME=/composer \
-    COMPOSER_MAX_PARALLEL_HTTP=24 \
-    PHP_PM_MAX_CHILDREN=10 \
-    PHP_PM_START_SERVERS=3 \
-    PHP_MIN_SPARE_SERVERS=2 \
-    PHP_MAX_SPARE_SERVERS=4 \
-    PHP_DATE_TIMEZONE=UTC \
-    PHP_DISPLAY_ERRORS=Off \
-    PHP_ERROR_REPORTING=22527 \
-    PHP_MEMORY_LIMIT=256M \
-    PHP_MAX_EXECUTION_TIME=90 \
-    PHP_POST_MAX_SIZE=100M \
-    PHP_UPLOAD_MAX_FILE_SIZE=100M \
-    PHP_ALLOW_URL_FOPEN=Off
+# 2. PHP 확장 설치 도구 가져오기 (이게 에러 방지 치트키야!)
+ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
+RUN chmod +x /usr/local/bin/install-php-extensions
 
-# Prepare base container: 
-# 1. Install PHP, Composer
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-COPY .fly/php/ondrej_ubuntu_php.gpg /etc/apt/trusted.gpg.d/ondrej_ubuntu_php.gpg
-ADD .fly/php/packages/${PHP_VERSION}.txt /tmp/php-packages.txt
+# 3. 라라벨에 필요한 PHP 확장만 골라서 설치 (이름 틀릴 걱정 없음)
+RUN install-php-extensions gd pdo_sqlite bcmath zip intl opcache exif pcntl
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends gnupg2 ca-certificates git-core curl zip unzip \
-                                                  rsync vim-tiny htop sqlite3 nginx supervisor cron \
-    && ln -sf /usr/bin/vim.tiny /etc/alternatives/vim \
-    && ln -sf /etc/alternatives/vim /usr/bin/vim \
-    && echo "deb http://ppa.launchpad.net/ondrej/php/ubuntu jammy main" > /etc/apt/sources.list.d/ondrej-ubuntu-php-focal.list \
-    && apt-get update \
-    && apt-get -y --no-install-recommends install $(cat /tmp/php-packages.txt) \
-    && ln -sf /usr/sbin/php-fpm${PHP_VERSION} /usr/sbin/php-fpm \
-    && mkdir -p /var/www/html/public && echo "index" > /var/www/html/public/index.php \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/doc/*
+# 4. Composer 설치
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# 2. Copy config files to proper locations
-COPY .fly/nginx/ /etc/nginx/
-COPY .fly/fpm/ /etc/php/${PHP_VERSION}/fpm/
-COPY .fly/supervisor/ /etc/supervisor/
-COPY .fly/entrypoint.sh /entrypoint
-COPY .fly/start-nginx.sh /usr/local/bin/start-nginx
-RUN chmod 754 /usr/local/bin/start-nginx
-    
-# 3. Copy application code, skipping files based on .dockerignore
-COPY . /var/www/html
 WORKDIR /var/www/html
+COPY . .
 
-# 4. Setup application dependencies 
-RUN composer install --optimize-autoloader --no-dev \
-    && mkdir -p storage/logs \
-    && php artisan optimize:clear \
-    && chown -R www-data:www-data /var/www/html \
-    && echo "MAILTO=\"\"\n* * * * * www-data /usr/bin/php /var/www/html/artisan schedule:run" > /etc/cron.d/laravel \
-    && sed -i='' '/->withMiddleware(function (Middleware \$middleware) {/a\
-        \$middleware->trustProxies(at: "*");\
-    ' bootstrap/app.php; \ 
-    if [ -d .fly ]; then cp .fly/entrypoint.sh /entrypoint; chmod +x /entrypoint; fi;
+# 의존성 설치 (에러 방지를 위해 잠시 --no-dev 제외하고 설치해볼게)
+RUN composer install --optimize-autoloader
 
-
-
-
-# Multi-stage build: Build static assets
-# This allows us to not include Node within the final container
-FROM node:${NODE_VERSION} as node_modules_go_brrr
-
-RUN mkdir /app
-
-RUN mkdir -p  /app
+# ---- Node.js 빌드 단계 (Vite용) ----
+FROM node:18-alpine AS node_modules_go_brrr
 WORKDIR /app
 COPY . .
-# COPY --from=base /var/www/html/vendor /app/vendor
+RUN npm install && npm run build
 
-# Use yarn or npm depending on what type of
-# lock file we might find. Defaults to
-# NPM if no lock file is found.
-# Note: We run "production" for Mix and "build" for Vite
-RUN if [ -f "vite.config.js" ] || [ -f "vite.config.ts" ]; then \
-        ASSET_CMD="build"; \
-    else \
-        ASSET_CMD="production"; \
-    fi; \
-    if [ -f "yarn.lock" ]; then \
-        yarn install --frozen-lockfile; \
-        yarn $ASSET_CMD; \
-    elif [ -f "pnpm-lock.yaml" ]; then \
-        corepack enable && corepack prepare pnpm@latest-8 --activate; \
-        pnpm install --frozen-lockfile; \
-        pnpm run $ASSET_CMD; \
-    elif [ -f "package-lock.json" ]; then \
-        npm ci --no-audit; \
-        npm run $ASSET_CMD; \
-    else \
-        npm install; \
-        npm run $ASSET_CMD; \
-    fi;
-
-# From our base container created above, we
-# create our final image, adding in static
-# assets that we generated above
+# ---- 최종 이미지 합치기 ----
 FROM base
+COPY --from=node_modules_go_brrr /app/public /var/www/html/public
 
-# Packages like Laravel Nova may have added assets to the public directory
-# or maybe some custom assets were added manually! Either way, we merge
-# in the assets we generated above rather than overwrite them
-COPY --from=node_modules_go_brrr /app/public /var/www/html/public-npm
-RUN rsync -ar /var/www/html/public-npm/ /var/www/html/public/ \
-    && rm -rf /var/www/html/public-npm \
-    && chown -R www-data:www-data /var/www/html
+RUN chown -R www-data:www-data /var/www/html \
+    && mkdir -p database storage bootstrap/cache \
+    && touch database/database.sqlite \
+    && chown -R www-data:www-data database storage bootstrap/cache \
+    && chmod -R 775 storage bootstrap/cache
 
-RUN mkdir -p database \
- && touch database/database.sqlite \
- && chown -R www-data:www-data database
-
-# 5. Setup Entrypoint
-EXPOSE 8080
-
-ENTRYPOINT ["/entrypoint"]
+EXPOSE 9000
+CMD ["php-fpm"]

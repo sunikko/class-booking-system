@@ -39,11 +39,12 @@ class BookingTransactionTest extends TestCase
         // when: the student submits a booking request
         $service = app(BookingService::class);
 
-        $booking = $service->submitBooking(
-            student: $student,
-            classSessionIds: [$classSession->id],
-            date: '2026-01-10',
-            comment: null
+        $booking = $service->createBooking(
+            user: $student->user,
+            data: [
+                'class_session_id' => $classSession->id,
+                'date' => '2026-01-10',
+            ]
         );
 
         // then: booking is confirmed
@@ -98,17 +99,17 @@ class BookingTransactionTest extends TestCase
 
 
     /**
-    * Given
-    * - class_session capacity = 1
-    * - already confirmed booking 1 exists for the class_session
-    * 
-    * When
-    * -  another student requests booking for the same class_session
-    * 
-    * Then
-    * - booking is created
-    * - status = WAITING
-    */
+     * Given
+     * - class_session capacity = 1
+     * - already confirmed booking 1 exists for the class_session
+     * 
+     * When
+     * -  another student requests booking for the same class_session
+     * 
+     * Then
+     * - booking is created
+     * - status = WAITING
+     */
     public function test_capacity_exceeded_results_in_waiting()
     {
         // Given
@@ -180,7 +181,7 @@ class BookingTransactionTest extends TestCase
 
         // When
         $response = $this->actingAs($confirmedStudent->user)
-    ->deleteJson("/api/bookings/{$confirmedBooking->id}");
+            ->deleteJson("/api/bookings/{$confirmedBooking->id}");
 
         // Then
         $response->assertNoContent();
@@ -316,5 +317,4 @@ class BookingTransactionTest extends TestCase
 
         $this->assertEquals(0, Booking::where('status', BookingStatus::CONFIRMED)->count());
     }
-
 }
